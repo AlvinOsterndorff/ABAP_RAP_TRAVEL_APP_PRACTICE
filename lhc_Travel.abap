@@ -82,7 +82,7 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD earlynumbering_cba_Booking.
-    mapped-zi_booking_aeo_m = VALUE #(
+    mapped-zi_booking_aeo_m = VALUE #( BASE mapped-zi_booking_aeo_m
       FOR GROUPS <group_key> OF <ls_entity> IN entities GROUP BY <ls_entity>-travelid
         LET
           lv_max_booking_id = get_latest_booking_id(
@@ -91,7 +91,7 @@ CLASS lhc_Travel IMPLEMENTATION.
         IN
           ( LINES OF map_new_bookings(
               iv_start_id = lv_max_booking_id
-              is_entity = VALUE #( entities[ KEY entity travelid = <group_key> ] ) ) ) ).
+              is_entity = VALUE #( entities[ KEY entity travelid = <group_key> ] OPTIONAL ) ) ) ).
   ENDMETHOD.
 
   METHOD acceptTravel.
