@@ -32,9 +32,9 @@ CLASS lhc_Travel DEFINITION INHERITING FROM cl_abap_behavior_handler.
       RETURNING VALUE(rv_result) TYPE /dmo/booking_id.
 
     METHODS map_new_bookings
-      IMPORTING iv_start_id TYPE /dmo/booking_id
-                is_entity   TYPE LINE OF tt_entities_booking
-      CHANGING  ct_mapped   TYPE tt_mapped_booking.
+      IMPORTING iv_start_id      TYPE /dmo/booking_id
+                is_entity        TYPE LINE OF tt_entities_booking
+      RETURNING VALUE(rt_mapped) TYPE tt_mapped_booking.
 ENDCLASS.
 
 CLASS lhc_Travel IMPLEMENTATION.
@@ -49,27 +49,27 @@ CLASS lhc_Travel IMPLEMENTATION.
     DELETE lt_entities WHERE travelid IS NOT INITIAL.
 
     TRY.
-        cl_numberrange_runtime=>number_get(
-          EXPORTING
-            nr_range_nr       = '01'
-            object            = '/DMO/TRV_M'
-            quantity          = CONV #( lines( lt_entities ) )
-          IMPORTING
-            number            = DATA(lv_latest_num)
-            returncode        = DATA(lv_return_code)
-            returned_quantity = DATA(lv_qty) ).
-      CATCH cx_nr_object_not_found.
-      CATCH cx_number_ranges INTO DATA(lo_error).
-        failed-travel = VALUE #(
-          FOR ls_entity IN lt_entities (
-            %cid = ls_entity-%cid
-            %key = ls_entity-%key ) ).
-        reported-travel = VALUE #(
-          FOR ls_entity IN lt_entities (
-            %key = ls_entity-%key
-            %msg = lo_error ) ).
+      cl_numberrange_runtime=>number_get(
+        EXPORTING
+          nr_range_nr       = '01'
+          object            = '/DMO/TRV_M'
+          quantity          = CONV #( lines( lt_entities ) )
+        IMPORTING
+          number            = DATA(lv_latest_num)
+          returncode        = DATA(lv_return_code)
+          returned_quantity = DATA(lv_qty) ).
+    CATCH cx_nr_object_not_found.
+    CATCH cx_number_ranges INTO DATA(lo_error).
+      failed-travel = VALUE #(
+        FOR ls_entity IN lt_entities (
+          %cid = ls_entity-%cid
+          %key = ls_entity-%key ) ).
+      reported-travel = VALUE #(
+        FOR ls_entity IN lt_entities (
+          %key = ls_entity-%key
+          %msg = lo_error ) ).
 
-        EXIT.
+      EXIT.
     ENDTRY.
 
     ASSERT lv_qty = lines( lt_entities ).
@@ -82,21 +82,16 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD earlynumbering_cba_Booking.
-    DATA: lv_max_bookingid TYPE /dmo/booking_id.
-
-    LOOP AT entities ASSIGNING FIELD-SYMBOL(<fs_entity>) GROUP BY <fs_entity>-TravelId.
-      lv_max_bookingid = get_latest_booking_id(
-        EXPORTING
-          iv_travel_id = <fs_entity>-travelid
-          it_entities  = entities ).
-
-      map_new_bookings(
-        EXPORTING
-          iv_start_id = lv_max_bookingid
-          is_entity   = <fs_entity>
-        CHANGING
-          ct_mapped   = mapped-zi_booking_aeo_m ).
-    ENDLOOP.
+    mapped-zi_booking_aeo_m = VALUE #(
+      FOR GROUPS <group_key> OF <ls_entity> IN entities GROUP BY <ls_entity>-travelid
+        LET
+          lv_max_booking_id = get_latest_booking_id(
+            iv_travel_id = <group_key>
+            it_entities  = entities )
+        IN
+          ( LINES OF map_new_bookings(
+              iv_start_id = lv_max_booking_id
+              is_entity = VALUE #( entities[ KEY entity travelid = <group_key> ] ) ) ) ).
   ENDMETHOD.
 
   METHOD acceptTravel.
@@ -181,7 +176,7 @@ CLASS lhc_Travel IMPLEMENTATION.
 
     rv_result = REDUCE #(
       INIT lv_max_db = CONV /dmo/booking_id( '0' )
-      FOR ls_link in lt_link_data USING KEY entity WHERE ( source-travelid = iv_travel_id )
+      FOR ls_link IN lt_link_data USING KEY entity WHERE ( source-travelid = iv_travel_id )
         NEXT lv_max_db = nmax( val1 = lv_max_db val2 = ls_link-target-BookingId ) ).
 
     rv_result = REDUCE #(
@@ -192,15 +187,17 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD map_new_bookings.
-    DATA(lv_running_id) = iv_start_id.
-
-    LOOP AT is_entity-%target ASSIGNING FIELD-SYMBOL(<fs_new_booking>).
-      IF <fs_new_booking>-bookingid IS INITIAL.
-        lv_running_id += 1.
-        <fs_new_booking>-bookingid = lv_running_id.
-      ENDIF.
-
-      APPEND CORRESPONDING #( <fs_new_booking> ) TO ct_mapped.
-    ENDLOOP.
+    rt_mapped = VALUE #(
+      LET lv_running_id = iv_start_id IN
+      FOR ls_booking IN is_entity-%target INDEX INTO lv_idx
+        LET
+          lv_next_id = COND /dmo/booking_id(
+            WHEN ls_booking-bookingid IS INITIAL
+            THEN lv_running_id + lv_idx
+            ELSE ls_booking-bookingid )
+        IN
+          ( %cid = ls_booking-%cid
+            travelid = ls_booking-travelid
+            bookingid = lv_next_id ) ).
   ENDMETHOD.
 ENDCLASS.
