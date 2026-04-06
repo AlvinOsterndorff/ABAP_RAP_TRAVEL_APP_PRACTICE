@@ -83,7 +83,7 @@ CLASS lhc_Travel IMPLEMENTATION.
 
   METHOD earlynumbering_cba_Booking.
     mapped-zi_booking_aeo_m = VALUE #( BASE mapped-zi_booking_aeo_m
-      FOR GROUPS <group_key> OF <ls_entity> IN entities GROUP BY <ls_entity>-travelid
+      FOR GROUPS <group_key> OF <fs_entity> IN entities GROUP BY <fs_entity>-travelid
         LET
           lv_max_booking_id = get_latest_booking_id(
             iv_travel_id = <group_key>
@@ -196,8 +196,8 @@ CLASS lhc_Travel IMPLEMENTATION.
             THEN lv_running_id + lv_idx
             ELSE ls_booking-bookingid )
         IN
-          ( %cid = ls_booking-%cid
-            travelid = ls_booking-travelid
-            bookingid = lv_next_id ) ).
+          ( %cid      = ls_booking-%cid
+            travelid  = ls_booking-travelid
+            bookingid = lv_next_id          ) ).
   ENDMETHOD.
 ENDCLASS.
