@@ -16,6 +16,24 @@ CLASS lhc_zi_booking_aeo_m DEFINITION INHERITING FROM cl_abap_behavior_handler.
       IMPORTING iv_start_id      TYPE /dmo/booking_supplement_id
                 is_parent        TYPE LINE OF tt_entities
       RETURNING VALUE(rt_mapped) TYPE tt_mapped.
+
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR ZI_Booking_AEO_M RESULT result.
+
+    METHODS validatecurrencycode FOR VALIDATE ON SAVE
+      IMPORTING keys FOR zi_booking_aeo_m~validatecurrencycode.
+
+    METHODS validatecustomer FOR VALIDATE ON SAVE
+      IMPORTING keys FOR zi_booking_aeo_m~validatecustomer.
+
+    METHODS validateflightprice FOR VALIDATE ON SAVE
+      IMPORTING keys FOR zi_booking_aeo_m~validateflightprice.
+
+    METHODS validateconnection FOR VALIDATE ON SAVE
+      IMPORTING keys FOR zi_booking_aeo_m~validateconnection.
+
+    METHODS validatestatus FOR VALIDATE ON SAVE
+      IMPORTING keys FOR zi_booking_aeo_m~validatestatus.
 ENDCLASS.
 
 CLASS lhc_zi_booking_aeo_m IMPLEMENTATION.
@@ -66,5 +84,36 @@ CLASS lhc_zi_booking_aeo_m IMPLEMENTATION.
             travelid            = is_parent-travelid
             bookingid           = is_parent-bookingid
             bookingsupplementid = lv_next_id               ) ).
+  ENDMETHOD.
+
+  METHOD get_instance_features.
+    READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY travel BY \_Booking
+        FIELDS ( travelid bookingstatus )
+        WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_booking_result).
+
+    result = VALUE #(
+      FOR ls_booking_result IN lt_booking_result
+        ( %tky = ls_booking_result-%tky
+          %features-%assoc-_booksupp = COND #(
+            WHEN ls_booking_result-bookingstatus = 'X'
+            THEN if_abap_behv=>fc-o-disabled
+            ELSE if_abap_behv=>fc-o-enabled ) ) ).
+  ENDMETHOD.
+
+  METHOD validateCurrencyCode.
+  ENDMETHOD.
+
+  METHOD validateCustomer.
+  ENDMETHOD.
+
+  METHOD validateFlightPrice.
+  ENDMETHOD.
+
+  METHOD validateConnection.
+  ENDMETHOD.
+
+  METHOD validateStatus.
   ENDMETHOD.
 ENDCLASS.
