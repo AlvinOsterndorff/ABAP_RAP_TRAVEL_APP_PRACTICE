@@ -282,29 +282,26 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD validateDates.
+    DATA(lo_travel_helper) = NEW zcl_travel_helper_aeo( ).
+    DATA(lv_system_Date) = cl_abap_context_info=>get_system_date( ).
+
     READ ENTITY IN LOCAL MODE zi_travel_aeo_m
       FIELDS ( begindate enddate )
       WITH CORRESPONDING #( keys )
       RESULT DATA(lt_travels).
 
     LOOP AT lt_travels ASSIGNING FIELD-SYMBOL(<fs_travel>).
-      IF <fs_travel>-enddate < <fs_travel>-begindate.
+      DATA(ls_result) = lo_travel_helper->validate_dates(
+        iv_begin_date  = <fs_travel>-begindate
+        iv_end_date    = <fs_travel>-enddate
+        iv_system_date = lv_system_Date ).
+
+      IF ls_result-are_valid_dates = abap_false.
+        APPEND VALUE #( %tky = <fs_travel>-%tky ) TO failed-travel.
         APPEND VALUE #(
           %tky = <fs_travel>-%tky
           %msg = new /dmo/cm_flight_messages(
-            textid      = /dmo/cm_flight_messages=>begin_date_bef_end_date
-            severity    = if_abap_behv_message=>severity-error
-            begin_date  = <fs_travel>-begindate
-            end_date    = <fs_travel>-enddate
-            travel_id   = <fs_travel>-travelid )
-          %element-begindate = if_abap_behv=>mk-on
-          %element-enddate   = if_abap_behv=>mk-on
-        ) TO reported-travel.
-      ELSEIF <fs_travel>-begindate < cl_abap_context_info=>get_system_date( ).
-        APPEND VALUE #(
-          %tky = <fs_travel>-%tky
-          %msg = new /dmo/cm_flight_messages(
-            textid      = /dmo/cm_flight_messages=>begin_date_on_or_bef_sysdate
+            textid      = ls_result-error_textid
             severity    = if_abap_behv_message=>severity-error
             begin_date  = <fs_travel>-begindate
             end_date    = <fs_travel>-enddate
