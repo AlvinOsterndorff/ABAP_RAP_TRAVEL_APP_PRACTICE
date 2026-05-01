@@ -1,0 +1,36 @@
+CLASS lhc_zi_booksupp_aeo_m DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    METHODS calculateTotalPrice FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR BookingSupplement~calculateTotalPrice.
+
+    METHODS validateCurrencyCode FOR VALIDATE ON SAVE
+      IMPORTING keys FOR BookingSupplement~validateCurrencyCode.
+
+    METHODS validatePrice FOR VALIDATE ON SAVE
+      IMPORTING keys FOR BookingSupplement~validatePrice.
+
+    METHODS validateSupplement FOR VALIDATE ON SAVE
+      IMPORTING keys FOR BookingSupplement~validateSupplement.
+ENDCLASS.
+
+CLASS lhc_ZI_BookSupp_AEO_M IMPLEMENTATION.
+  METHOD calculateTotalPrice.
+    DATA: lt_travel TYPE STANDARD TABLE OF zi_travel_aeo_m WITH UNIQUE HASHED KEY key COMPONENTS TravelId.
+
+    lt_travel = CORRESPONDING #( keys DISCARDING DUPLICATES MAPPING travelid = travelid ).
+
+    MODIFY ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+     ENTITY travel
+     EXECUTE recalctotalprice
+     FROM CORRESPONDING #( lt_travel ).
+  ENDMETHOD.
+
+  METHOD validateCurrencyCode.
+  ENDMETHOD.
+
+  METHOD validatePrice.
+  ENDMETHOD.
+
+  METHOD validateSupplement.
+  ENDMETHOD.
+ENDCLASS.
