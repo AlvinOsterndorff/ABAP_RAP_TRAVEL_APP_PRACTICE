@@ -1,3 +1,118 @@
+CLASS lcl_helper DEFINITION.
+  PUBLIC SECTION.
+    CLASS-METHODS get_latest_booking_id
+      IMPORTING iv_travel_id     TYPE /dmo/travel_id
+                it_link_data     TYPE tt_link_data
+                it_entities      TYPE tt_entities_booking
+      RETURNING VALUE(rv_result) TYPE /dmo/booking_id.
+
+    CLASS-METHODS map_new_bookings
+      IMPORTING iv_start_id      TYPE /dmo/booking_id
+                is_entity        TYPE LINE OF tt_entities_booking
+      RETURNING VALUE(rt_mapped) TYPE tt_mapped_booking.
+
+    CLASS-METHODS validate_dates
+      IMPORTING iv_begin_date    TYPE /dmo/begin_date
+                iv_end_date      TYPE /dmo/end_date
+                iv_system_date   TYPE cl_abap_context_info=>ty_system_date
+      RETURNING VALUE(rs_result) TYPE tt_date_check_result.
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+ENDCLASS.
+
+CLASS lcl_helper IMPLEMENTATION.
+   METHOD get_latest_booking_id.
+    rv_result = REDUCE #(
+      INIT lv_max_db = CONV /dmo/booking_id( '0' )
+      FOR <link> IN it_link_data USING KEY entity WHERE ( source-travelid = iv_travel_id )
+        NEXT lv_max_db = nmax( val1 = lv_max_db val2 = <link>-target-BookingId ) ).
+
+    rv_result = REDUCE #(
+      INIT lv_max_buffer = rv_result
+      FOR <entity> IN it_entities USING KEY entity WHERE ( travelid = iv_travel_id )
+        FOR ls_booking IN <entity>-%target
+          NEXT lv_max_buffer = nmax( val1 = lv_max_buffer val2 = ls_booking-BookingId ) ).
+  ENDMETHOD.
+
+  METHOD map_new_bookings.
+    rt_mapped = VALUE #(
+      LET lv_running_id = iv_start_id IN
+      FOR <booking> IN is_entity-%target INDEX INTO lv_idx
+        LET
+          lv_next_id = COND /dmo/booking_id(
+            WHEN <booking>-bookingid IS INITIAL
+            THEN lv_running_id + lv_idx
+            ELSE <booking>-bookingid )
+        IN
+          ( %cid      = <booking>-%cid
+            travelid  = <booking>-travelid
+            bookingid = lv_next_id          ) ).
+  ENDMETHOD.
+
+  METHOD validate_dates.
+    DATA(lv_error_textid) = COND scx_t100key(
+      WHEN iv_begin_date IS INITIAL
+        THEN /dmo/cm_flight_messages=>enter_begin_date
+      WHEN iv_end_date IS INITIAL
+        THEN /dmo/cm_flight_messages=>enter_end_date
+      WHEN iv_end_date < iv_begin_date
+        THEN /dmo/cm_flight_messages=>begin_date_bef_end_date
+      WHEN iv_begin_date < iv_system_date
+        THEN /dmo/cm_flight_messages=>begin_date_on_or_bef_sysdate ).
+
+    rs_result = VALUE #(
+      are_valid_dates = COND #( WHEN lv_error_textid IS INITIAL THEN abap_true ELSE abap_false )
+      error_textid = lv_error_textid ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS lsc_zi_travel_aeo_m DEFINITION INHERITING FROM cl_abap_behavior_saver.
+  PROTECTED SECTION.
+    METHODS save_modified REDEFINITION.
+ENDCLASS.
+
+CLASS lsc_zi_travel_aeo_m IMPLEMENTATION.
+  METHOD save_modified.
+    DATA: travel_log         TYPE STANDARD TABLE OF zlog_trvl_aeo_m,
+          lo_structure_descr TYPE REF TO cl_abap_structdescr.
+
+    IF create-travel IS NOT INITIAL.
+      LOOP AT create-travel ASSIGNING FIELD-SYMBOL(<travel>).
+        lo_structure_descr = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <travel>-%control ) ).
+
+        LOOP AT lo_structure_descr->components ASSIGNING FIELD-SYMBOL(<component>).
+          ASSIGN COMPONENT <component>-name OF STRUCTURE <travel>-%control TO FIELD-SYMBOL(<control_flag>).
+
+          IF <control_flag> = if_abap_behv=>mk-on.
+            ASSIGN COMPONENT <component>-name OF STRUCTURE <travel> TO FIELD-SYMBOL(<value>).
+
+            TRY.
+                APPEND VALUE #(
+                  travel_id = <travel>-travelid
+                  change_id = cl_system_uuid=>create_uuid_x16_static( )
+                  change_operation = 'CREATE'
+                  changed_field_name = <component>-name
+                  new_value = |{ <value> }|
+                ) TO travel_log.
+              CATCH cx_uuid_error.
+                "handle exception
+            ENDTRY.
+          ENDIF.
+        ENDLOOP.
+      ENDLOOP.
+
+    ENDIF.
+
+    IF update-travel IS NOT INITIAL.
+
+    ENDIF.
+
+    IF delete-travel IS NOT INITIAL.
+
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+
 CLASS lhc_Travel DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
     METHODS get_instance_authorizations FOR INSTANCE AUTHORIZATION
@@ -35,6 +150,9 @@ CLASS lhc_Travel DEFINITION INHERITING FROM cl_abap_behavior_handler.
 
     METHODS validatestatus FOR VALIDATE ON SAVE
       IMPORTING keys FOR travel~validatestatus.
+
+    METHODS calculatetotalprice FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR travel~calculatetotalprice.
 
     METHODS earlynumbering_cba_Booking FOR NUMBERING
       IMPORTING entities FOR CREATE Travel\_Booking.
@@ -86,22 +204,20 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD earlynumbering_cba_Booking.
-    DATA(lo_travel_helper) = NEW zcl_travel_helper_aeo( ).
-
     READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
       ENTITY travel BY \_booking
         FROM CORRESPONDING #( entities )
         LINK DATA(lt_link_data).
 
-    mapped-zi_booking_aeo_m = VALUE #( BASE mapped-zi_booking_aeo_m
+    mapped-booking = VALUE #( BASE mapped-booking
       FOR GROUPS <group_key> OF <fs_entity> IN entities GROUP BY <fs_entity>-travelid
         LET
-          lv_max_booking_id = lo_travel_helper->get_latest_booking_id(
+          lv_max_booking_id = lcl_helper=>get_latest_booking_id(
             iv_travel_id = <group_key>
             it_link_data = lt_link_data
             it_entities  = entities )
         IN
-          ( LINES OF lo_travel_helper->map_new_bookings(
+          ( LINES OF lcl_helper=>map_new_bookings(
               iv_start_id = lv_max_booking_id
               is_entity   = VALUE #( entities[ KEY entity travelid = <group_key> ] OPTIONAL ) ) ) ).
   ENDMETHOD.
@@ -144,7 +260,7 @@ CLASS lhc_Travel IMPLEMENTATION.
         ALL FIELDS WITH CORRESPONDING #( lt_travel_read )
         RESULT DATA(lt_booking_read).
     READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
-      ENTITY ZI_Booking_AEO_M BY \_BookSupp
+      ENTITY booking BY \_BookSupp
         ALL FIELDS WITH CORRESPONDING #( lt_booking_read )
         RESULT DATA(lt_bookingsupp_read).
 
@@ -181,17 +297,77 @@ CLASS lhc_Travel IMPLEMENTATION.
       ENTITY Travel CREATE BY \_Booking
         FIELDS ( BookingId BookingDate CustomerId CarrierId ConnectionId FlightDate FlightPrice CurrencyCode BookingStatus )
         WITH lt_booking_cba
-      ENTITY ZI_Booking_AEO_M CREATE BY \_BookSupp
+      ENTITY booking CREATE BY \_BookSupp
         FIELDS ( BookingSupplementId SupplementId Price CurrencyCode )
         WITH lt_booksupp_cba
       MAPPED DATA(lt_mapped).
 
     mapped-travel = lt_mapped-travel.
-    mapped-zi_booking_aeo_m = lt_mapped-zi_booking_aeo_m.
-    mapped-zi_booksupp_aeo_m = lt_mapped-zi_booksupp_aeo_m.
+    mapped-booking = lt_mapped-booking.
+    mapped-bookingsupplement = lt_mapped-bookingsupplement.
   ENDMETHOD.
 
   METHOD recalcTotalPrice.
+    TYPES: BEGIN OF ts_total,
+             total_price   TYPE /dmo/total_price,
+             currency_code TYPE /dmo/currency_code,
+           END OF ts_total.
+    DATA: lt_total           TYPE TABLE OF ts_total,
+          lv_converted_price TYPE /dmo/total_price.
+
+    READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY travel
+        FIELDS ( bookingfee currencycode )
+        WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_travel).
+
+    READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY travel BY \_Booking
+        FIELDS ( flightprice currencycode )
+        WITH CORRESPONDING #( lt_travel )
+        RESULT DATA(lt_booking).
+
+    READ ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY booking BY \_BookSupp
+        FIELDS ( price currencycode )
+        WITH CORRESPONDING #( lt_booking )
+        RESULT DATA(lt_booksupp).
+
+    LOOP AT lt_travel ASSIGNING FIELD-SYMBOL(<fs_travel>) WHERE currencycode IS NOT INITIAL.
+      lt_total = VALUE #( ( total_price = <fs_travel>-bookingfee currency_code = <fs_travel>-currencycode ) ).
+
+      LOOP AT lt_booking ASSIGNING FIELD-SYMBOL(<fs_booking>) USING KEY entity
+      WHERE travelid = <fs_travel>-travelid AND currencycode IS NOT INITIAL.
+        APPEND VALUE #( total_price = <fs_booking>-flightprice currency_code = <fs_booking>-currencycode ) TO lt_total.
+
+        LOOP AT lt_booksupp ASSIGNING FIELD-SYMBOL(<fs_booksupp>) USING KEY entity
+        WHERE travelid = <fs_booking>-travelid AND bookingid = <fs_booking>-bookingid AND currencycode IS NOT INITIAL.
+          APPEND VALUE #( total_price = <fs_booksupp>-price currency_code = <fs_booksupp>-currencycode ) TO lt_total.
+        ENDLOOP.
+      ENDLOOP.
+
+      LOOP AT lt_total ASSIGNING FIELD-SYMBOL(<fs_total>).
+        IF <fs_total>-currency_code = <fs_travel>-currencycode.
+          lv_converted_price = <fs_total>-total_price.
+        ELSE.
+          /dmo/cl_flight_amdp=>convert_currency(
+            EXPORTING
+              iv_amount               = <fs_total>-total_price
+              iv_currency_code_source = <fs_total>-currency_code
+              iv_currency_code_target = <fs_travel>-currencycode
+              iv_exchange_rate_date   = cl_abap_context_info=>get_system_date( )
+            IMPORTING
+              ev_amount               = lv_converted_price ).
+        ENDIF.
+
+        <fs_travel>-totalprice += lv_converted_price.
+      ENDLOOP.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY travel
+        UPDATE FIELDS ( totalprice )
+        WITH CORRESPONDING #( lt_travel ).
   ENDMETHOD.
 
   METHOD rejectTravel.
@@ -253,12 +429,9 @@ CLASS lhc_Travel IMPLEMENTATION.
     SELECT
       FROM /dmo/customer
       FIELDS customer_id
-      FOR ALL ENTRIES IN @lt_customer_result
-      WHERE customer_id = @lt_customer_result-customerid
+      FOR ALL ENTRIES IN @lt_customer
+      WHERE customer_id = @lt_customer-customer_id
       INTO TABLE @DATA(lt_customer_db).
-    IF sy-subrc IS INITIAL.
-
-    ENDIF.
 
     LOOP AT lt_customer_result ASSIGNING FIELD-SYMBOL(<fs_customer_result>).
       IF <fs_customer_result>-customerid IS INITIAL
@@ -282,7 +455,6 @@ CLASS lhc_Travel IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD validateDates.
-    DATA(lo_travel_helper) = NEW zcl_travel_helper_aeo( ).
     DATA(lv_system_Date) = cl_abap_context_info=>get_system_date( ).
 
     READ ENTITY IN LOCAL MODE zi_travel_aeo_m
@@ -291,7 +463,7 @@ CLASS lhc_Travel IMPLEMENTATION.
       RESULT DATA(lt_travels).
 
     LOOP AT lt_travels ASSIGNING FIELD-SYMBOL(<fs_travel>).
-      DATA(ls_result) = lo_travel_helper->validate_dates(
+      DATA(ls_result) = lcl_helper=>validate_dates(
         iv_begin_date  = <fs_travel>-begindate
         iv_end_date    = <fs_travel>-enddate
         iv_system_date = lv_system_Date ).
@@ -331,5 +503,12 @@ CLASS lhc_Travel IMPLEMENTATION.
             severity = if_abap_behv_message=>severity-error
             status   = <fs_travel>-overallstatus )
           %element-overallstatus = if_abap_behv=>mk-on ) ).
+  ENDMETHOD.
+
+  METHOD calculateTotalPrice.
+    MODIFY ENTITIES OF zi_travel_aeo_m IN LOCAL MODE
+      ENTITY travel
+        EXECUTE recalcTotalPrice
+        FROM CORRESPONDING #( keys ).
   ENDMETHOD.
 ENDCLASS.
