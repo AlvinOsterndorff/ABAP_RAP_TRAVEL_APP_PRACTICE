@@ -1,9 +1,9 @@
 CLASS lcl_helper DEFINITION.
   PUBLIC SECTION.
     TYPES: tt_entities    TYPE TABLE FOR CREATE zi_booking_aeo_m\_BookSupp,
-       tt_mapped      TYPE TABLE FOR MAPPED EARLY zi_booksupp_aeo_m,
-       tt_link_data   TYPE TABLE FOR READ LINK zi_travel_aeo_m\\booking\_booksupp,
-       tt_travel_keys TYPE TABLE FOR ACTION IMPORT zi_travel_aeo_m\\travel~recalctotalprice.
+           tt_mapped      TYPE TABLE FOR MAPPED EARLY zi_booksupp_aeo_m,
+           tt_link_data   TYPE TABLE FOR READ LINK zi_travel_aeo_m\\booking\_booksupp,
+           tt_travel_keys TYPE TABLE FOR ACTION IMPORT zi_travel_aeo_m\\travel~recalctotalprice.
 
     CLASS-METHODS get_latest_id
       IMPORTING iv_travel_id     TYPE /dmo/travel_id
