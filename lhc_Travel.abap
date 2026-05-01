@@ -1,5 +1,14 @@
 CLASS lcl_helper DEFINITION.
   PUBLIC SECTION.
+    TYPES: tt_entities_booking  TYPE TABLE FOR CREATE zi_travel_aeo_m\_Booking,
+           tt_mapped_booking    TYPE TABLE FOR MAPPED EARLY zi_booking_aeo_m,
+           tt_link_data         TYPE TABLE FOR READ LINK zi_travel_aeo_m\\travel\_booking,
+    
+           BEGIN OF tt_date_check_result,
+             are_valid_dates TYPE abap_bool,
+             error_textid    TYPE scx_t100key,
+           END OF tt_date_check_result.
+  
     CLASS-METHODS get_latest_booking_id
       IMPORTING iv_travel_id     TYPE /dmo/travel_id
                 it_link_data     TYPE tt_link_data
