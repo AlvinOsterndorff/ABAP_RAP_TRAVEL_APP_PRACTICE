@@ -35,7 +35,7 @@ ENDCLASS.
 CLASS zcl_aux_travel_aeo IMPLEMENTATION.
   METHOD log_changes.
     LOOP AT it_data ASSIGNING FIELD-SYMBOL(<travel>).
-        DATA(travel_id) =  zcl_aux_travel_aeo=>get_field_value(
+        DATA(travel_id) = zcl_aux_travel_aeo=>get_field_value(
           is_row        = <travel>
           iv_field_name = 'TRAVELID' ).
         DATA(changed_fields) = zcl_aux_travel_aeo=>get_changed_fields( <travel> ).
