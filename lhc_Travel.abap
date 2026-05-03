@@ -74,9 +74,7 @@ ENDCLASS.
 CLASS lsc_zi_travel_aeo_m IMPLEMENTATION.
   METHOD save_modified.
     DATA: travel_log          TYPE STANDARD TABLE OF zlog_trvl_aeo_m,
-          change_table        TYPE TABLE FOR CHANGE zi_travel_aeo_m\\travel,
-          changed_fields      TYPE string_table,
-          changed_field_value TYPE string.
+          change_table        TYPE TABLE FOR CHANGE zi_travel_aeo_m\\travel.
 
     IF create-travel IS NOT INITIAL.
       change_table = create-travel.
