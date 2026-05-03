@@ -1,11 +1,6 @@
-CLASS lcl_helper DEFINITION.
+CLASS lcl_booking_helper DEFINITION.
   PUBLIC SECTION.
-    TYPES: tt_entities    TYPE TABLE FOR CREATE zi_booking_aeo_m\_BookSupp,
-           tt_mapped      TYPE TABLE FOR MAPPED EARLY zi_booksupp_aeo_m,
-           tt_link_data   TYPE TABLE FOR READ LINK zi_travel_aeo_m\\booking\_booksupp,
-           tt_travel_keys TYPE TABLE FOR ACTION IMPORT zi_travel_aeo_m\\travel~recalctotalprice.
-
-    CLASS-METHODS get_latest_id
+    CLASS-METHODS get_latest_booksupp_id
       IMPORTING iv_travel_id     TYPE /dmo/travel_id
                 iv_booking_id    TYPE /dmo/booking_id
                 it_link_data     TYPE tt_link_data
@@ -18,8 +13,8 @@ CLASS lcl_helper DEFINITION.
       RETURNING VALUE(rt_mapped) TYPE tt_mapped.
 ENDCLASS.
 
-CLASS lcl_helper IMPLEMENTATION.
-  METHOD get_latest_id.
+CLASS lcl_booking_helper IMPLEMENTATION.
+  METHOD get_latest_booksupp_id.
     rv_result = REDUCE #(
       INIT lv_max_db = CONV /dmo/booking_supplement_id( '0' )
       FOR <link> IN it_link_data USING KEY entity WHERE ( source-travelid = iv_travel_id AND source-bookingid = iv_booking_id )
@@ -45,7 +40,7 @@ CLASS lcl_helper IMPLEMENTATION.
           ( %cid                = <booking_supp>-%cid
             travelid            = is_parent-travelid
             bookingid           = is_parent-bookingid
-            bookingsupplementid = lv_next_id               ) ).
+            bookingsupplementid = lv_next_id          ) ).
   ENDMETHOD.
 ENDCLASS.
 
@@ -88,13 +83,13 @@ CLASS lhc_zi_booking_aeo_m IMPLEMENTATION.
      mapped-bookingsupplement = VALUE #( BASE mapped-bookingsupplement
       FOR GROUPS <group_key> OF <fs_entity> IN entities GROUP BY <fs_entity>-%tky
         LET
-          lv_max_booking_supp_id = lcl_helper=>get_latest_id(
+          lv_max_booking_supp_id = lcl_booking_helper=>get_latest_booksupp_id(
             iv_travel_id  = <group_key>-travelid
             iv_booking_id = <group_key>-bookingid
             it_link_data  = lt_link_data
             it_entities   = entities )
         IN
-          ( LINES OF lcl_helper=>map_new_booking_supplements(
+          ( LINES OF lcl_booking_helper=>map_new_booking_supplements(
               iv_start_id = lv_max_booking_supp_id
               is_parent   = VALUE #( entities[ KEY entity %tky = <group_key> ] OPTIONAL ) ) ) ).
   ENDMETHOD.
