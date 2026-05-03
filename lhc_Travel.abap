@@ -1,14 +1,5 @@
-CLASS lcl_helper DEFINITION.
+CLASS lcl_travel_helper DEFINITION.
   PUBLIC SECTION.
-    TYPES: tt_entities_booking  TYPE TABLE FOR CREATE zi_travel_aeo_m\_Booking,
-           tt_mapped_booking    TYPE TABLE FOR MAPPED EARLY zi_booking_aeo_m,
-           tt_link_data         TYPE TABLE FOR READ LINK zi_travel_aeo_m\\travel\_booking,
-    
-           BEGIN OF tt_date_check_result,
-             are_valid_dates TYPE abap_bool,
-             error_textid    TYPE scx_t100key,
-           END OF tt_date_check_result.
-  
     CLASS-METHODS get_latest_booking_id
       IMPORTING iv_travel_id     TYPE /dmo/travel_id
                 it_link_data     TYPE tt_link_data
@@ -29,7 +20,7 @@ CLASS lcl_helper DEFINITION.
   PRIVATE SECTION.
 ENDCLASS.
 
-CLASS lcl_helper IMPLEMENTATION.
+CLASS lcl_travel_helper IMPLEMENTATION.
    METHOD get_latest_booking_id.
     rv_result = REDUCE #(
       INIT lv_max_db = CONV /dmo/booking_id( '0' )
@@ -82,42 +73,50 @@ ENDCLASS.
 
 CLASS lsc_zi_travel_aeo_m IMPLEMENTATION.
   METHOD save_modified.
-    DATA: travel_log         TYPE STANDARD TABLE OF zlog_trvl_aeo_m,
-          lo_structure_descr TYPE REF TO cl_abap_structdescr.
+    DATA: travel_log          TYPE STANDARD TABLE OF zlog_trvl_aeo_m,
+          change_table        TYPE TABLE FOR CHANGE zi_travel_aeo_m\\travel,
+          changed_fields      TYPE string_table,
+          changed_field_value TYPE string.
 
     IF create-travel IS NOT INITIAL.
-      LOOP AT create-travel ASSIGNING FIELD-SYMBOL(<travel>).
-        lo_structure_descr = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data( <travel>-%control ) ).
+      change_table = create-travel.
 
-        LOOP AT lo_structure_descr->components ASSIGNING FIELD-SYMBOL(<component>).
-          ASSIGN COMPONENT <component>-name OF STRUCTURE <travel>-%control TO FIELD-SYMBOL(<control_flag>).
-
-          IF <control_flag> = if_abap_behv=>mk-on.
-            ASSIGN COMPONENT <component>-name OF STRUCTURE <travel> TO FIELD-SYMBOL(<value>).
-
-            TRY.
-                APPEND VALUE #(
-                  travel_id = <travel>-travelid
-                  change_id = cl_system_uuid=>create_uuid_x16_static( )
-                  change_operation = 'CREATE'
-                  changed_field_name = <component>-name
-                  new_value = |{ <value> }|
-                ) TO travel_log.
-              CATCH cx_uuid_error.
-                "handle exception
-            ENDTRY.
-          ENDIF.
-        ENDLOOP.
-      ENDLOOP.
-
+      zcl_aux_travel_aeo=>log_changes(
+        EXPORTING
+          it_data      = change_table
+          iv_operation = 'CREATE'
+        CHANGING
+          ct_log       = travel_log ).
     ENDIF.
 
     IF update-travel IS NOT INITIAL.
+      change_table = update-travel.
 
+      zcl_aux_travel_aeo=>log_changes(
+        EXPORTING
+          it_data      = change_table
+          iv_operation = 'UPDATE'
+        CHANGING
+          ct_log       = travel_log ).
     ENDIF.
 
     IF delete-travel IS NOT INITIAL.
+      LOOP AT delete-travel ASSIGNING FIELD-SYMBOL(<delete>).
+        TRY.
+          APPEND VALUE #(
+            travel_id        = <delete>-travelid
+            change_id        = cl_system_uuid=>create_uuid_x16_static( )
+            change_operation = 'DELETE'
+            created_at       = utclong_current( )
+          ) TO travel_log.
+        CATCH cx_uuid_error.
+          "handle exception
+        ENDTRY.
+      ENDLOOP.
+    ENDIF.
 
+    IF travel_log IS NOT INITIAL.
+      INSERT zlog_trvl_aeo_m FROM TABLE @travel_log.
     ENDIF.
   ENDMETHOD.
 ENDCLASS.
@@ -221,12 +220,12 @@ CLASS lhc_Travel IMPLEMENTATION.
     mapped-booking = VALUE #( BASE mapped-booking
       FOR GROUPS <group_key> OF <fs_entity> IN entities GROUP BY <fs_entity>-travelid
         LET
-          lv_max_booking_id = lcl_helper=>get_latest_booking_id(
+          lv_max_booking_id = lcl_travel_helper=>get_latest_booking_id(
             iv_travel_id = <group_key>
             it_link_data = lt_link_data
             it_entities  = entities )
         IN
-          ( LINES OF lcl_helper=>map_new_bookings(
+          ( LINES OF lcl_travel_helper=>map_new_bookings(
               iv_start_id = lv_max_booking_id
               is_entity   = VALUE #( entities[ KEY entity travelid = <group_key> ] OPTIONAL ) ) ) ).
   ENDMETHOD.
@@ -472,7 +471,7 @@ CLASS lhc_Travel IMPLEMENTATION.
       RESULT DATA(lt_travels).
 
     LOOP AT lt_travels ASSIGNING FIELD-SYMBOL(<fs_travel>).
-      DATA(ls_result) = lcl_helper=>validate_dates(
+      DATA(ls_result) = lcl_travel_helper=>validate_dates(
         iv_begin_date  = <fs_travel>-begindate
         iv_end_date    = <fs_travel>-enddate
         iv_system_date = lv_system_Date ).
