@@ -16,11 +16,7 @@ CLASS zcl_aux_travel_aeo DEFINITION
         IMPORTING is_row                   TYPE any
         RETURNING VALUE(rt_changed_fields) TYPE string_table,
 
-      get_travel_id
-        IMPORTING is_row              TYPE any
-        RETURNING VALUE(rv_travel_id) TYPE string,
-
-      get_changed_field_value
+      get_field_value
         IMPORTING is_row          TYPE any
                   iv_field_name   TYPE string
         RETURNING VALUE(rv_value) TYPE string.
@@ -39,11 +35,13 @@ ENDCLASS.
 CLASS zcl_aux_travel_aeo IMPLEMENTATION.
   METHOD log_changes.
     LOOP AT it_data ASSIGNING FIELD-SYMBOL(<travel>).
-        DATA(travel_id)      = zcl_aux_travel_aeo=>get_travel_id( <travel> ).
+        DATA(travel_id) =  zcl_aux_travel_aeo=>get_field_value(
+          is_row        = <travel>
+          iv_field_name = 'TRAVELID' ).
         DATA(changed_fields) = zcl_aux_travel_aeo=>get_changed_fields( <travel> ).
 
         LOOP AT changed_fields ASSIGNING FIELD-SYMBOL(<changed_field_name>).
-          DATA(changed_field_value) = zcl_aux_travel_aeo=>get_changed_field_value(
+          DATA(changed_field_value) = zcl_aux_travel_aeo=>get_field_value(
             is_row        = <travel>
             iv_field_name = <changed_field_name> ).
 
@@ -86,14 +84,7 @@ CLASS zcl_aux_travel_aeo IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
-  METHOD get_travel_id.
-    ASSIGN COMPONENT 'TRAVELID' OF STRUCTURE is_row TO FIELD-SYMBOL(<id>).
-    IF sy-subrc = 0.
-      rv_travel_id = |{ <id> }|.
-    ENDIF.
-  ENDMETHOD.
-
-  METHOD get_changed_field_value.
+  METHOD get_field_value.
     ASSIGN COMPONENT iv_field_name OF STRUCTURE is_row TO FIELD-SYMBOL(<value>).
     IF sy-subrc = 0.
       rv_value = |{ <value> }|.
