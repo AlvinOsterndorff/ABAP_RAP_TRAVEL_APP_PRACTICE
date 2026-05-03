@@ -46,7 +46,7 @@ CLASS lcl_travel_helper IMPLEMENTATION.
         IN
           ( %cid      = <booking>-%cid
             travelid  = <booking>-travelid
-            bookingid = lv_next_id          ) ).
+            bookingid = lv_next_id         ) ).
   ENDMETHOD.
 
   METHOD validate_dates.
