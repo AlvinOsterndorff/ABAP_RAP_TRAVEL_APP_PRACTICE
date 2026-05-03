@@ -35,30 +35,30 @@ ENDCLASS.
 CLASS zcl_aux_travel_aeo IMPLEMENTATION.
   METHOD log_changes.
     LOOP AT it_data ASSIGNING FIELD-SYMBOL(<travel>).
-        DATA(travel_id) = zcl_aux_travel_aeo=>get_field_value(
+      DATA(travel_id) = zcl_aux_travel_aeo=>get_field_value(
+        is_row        = <travel>
+        iv_field_name = 'TRAVELID' ).
+      DATA(changed_fields) = zcl_aux_travel_aeo=>get_changed_fields( <travel> ).
+
+      LOOP AT changed_fields ASSIGNING FIELD-SYMBOL(<changed_field_name>).
+        DATA(changed_field_value) = zcl_aux_travel_aeo=>get_field_value(
           is_row        = <travel>
-          iv_field_name = 'TRAVELID' ).
-        DATA(changed_fields) = zcl_aux_travel_aeo=>get_changed_fields( <travel> ).
+          iv_field_name = <changed_field_name> ).
 
-        LOOP AT changed_fields ASSIGNING FIELD-SYMBOL(<changed_field_name>).
-          DATA(changed_field_value) = zcl_aux_travel_aeo=>get_field_value(
-            is_row        = <travel>
-            iv_field_name = <changed_field_name> ).
-
-          TRY.
-            APPEND VALUE #(
-              travel_id          = travel_id
-              change_id          = cl_system_uuid=>create_uuid_x16_static( )
-              change_operation   = iv_operation
-              changed_field_name = <changed_field_name>
-              new_value          = changed_field_value
-              created_at         = utclong_current( )
-            ) TO ct_log.
-          CATCH cx_uuid_error.
-            "handle exception
-          ENDTRY.
-        ENDLOOP.
+        TRY.
+          APPEND VALUE #(
+            travel_id          = travel_id
+            change_id          = cl_system_uuid=>create_uuid_x16_static( )
+            change_operation   = iv_operation
+            changed_field_name = <changed_field_name>
+            new_value          = changed_field_value
+            created_at         = utclong_current( )
+          ) TO ct_log.
+        CATCH cx_uuid_error.
+          "handle exception
+        ENDTRY.
       ENDLOOP.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD get_changed_fields.
